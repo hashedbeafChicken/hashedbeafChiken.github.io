@@ -8,31 +8,19 @@
 <script src="https://unpkg.com/budoux/bundle/budoux-ja.min.js"></script>
 <style>
 :root {
---bg-color: #121212;
---card-bg: #1e1e1e;
---text-color: #e0e0e0;
---accent-color: #ff9800;
---border-color: #333333;
+--bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0;
+--accent-color: #ff9800; --border-color: #333333;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-body {
-background-color: var(--bg-color); color: var(--text-color);
-font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden;
-}
-header {
-padding: 12px 16px; background-color: var(--card-bg); border-bottom: 1px solid var(--border-color);
-display: flex; justify-content: space-between; align-items: center; height: 56px;
-}
+body { background-color: var(--bg-color); color: var(--text-color); font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+header { padding: 12px 16px; background-color: var(--card-bg); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; height: 56px; }
 .title-area { font-size: 14px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
-button {
-background-color: #2c2c2e; color: var(--text-color); border: 1px solid var(--border-color);
-padding: 8px 12px; border-radius: 8px; font-size: 14px; cursor: pointer; transition: 0.2s;
-}
+button { background-color: #2c2c2e; color: var(--text-color); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 8px; font-size: 14px; cursor: pointer; transition: 0.2s; }
 button:active { background-color: #3a3a3c; }
 button.primary { background-color: var(--accent-color); color: #000; font-weight: bold; border: none; }
 main { flex: 1; display: flex; justify-content: center; align-items: center; position: relative; padding: 20px; cursor: pointer; }
 .guide-line { position: absolute; width: 2px; height: 30px; background-color: rgba(255, 152, 0, 0.4); top: 50%; transform: translateY(-50%); }
-#rsvp-word { font-size: 32px; font-weight: bold; letter-spacing: 1px; text-align: center; }
+#rsvp-word { font-size: 32px; font-weight: bold; letter-spacing: 1px; text-align: center; line-height: 1.4; }
 .orp { color: var(--accent-color); }
 .progress-bar-container { width: 100%; height: 4px; background-color: #2c2c2e; position: absolute; bottom: 0; left: 0; }
 #progress-bar { height: 100%; width: 0%; background-color: var(--accent-color); transition: width 0.1s linear; }
@@ -45,9 +33,9 @@ input[type="range"] { flex: 1; accent-color: var(--accent-color); }
 /* モーダル */
 .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; padding: 20px; }
 .modal.active { display: flex; }
-.modal-content { background-color: var(--card-bg); padding: 20px; border-radius: 12px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
+.modal-content { background-color: var(--card-bg); padding: 20px; border-radius: 12px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 12px; }
 input[type="text"], textarea { width: 100%; background: #121212; color: #fff; border: 1px solid #555; padding: 10px; border-radius: 8px; font-size: 14px; }
-textarea { height: 120px; resize: none; }
+textarea { height: 180px; resize: none; }
 #loading { display: none; font-size: 12px; color: var(--accent-color); text-align: center; }
 </style>
 </head>
@@ -90,11 +78,11 @@ textarea { height: 120px; resize: none; }
 <div class="modal-content">
 <h3>小説の読み込み</h3>
 <p style="font-size:12px; color:#aaa;">なろう・カクヨムのURL、または本文を直接貼り付けてね。</p>
-<input type="text" id="url-input" placeholder="https://...">
+<input type="text" id="url-input" placeholder="https://ncode.syosetu.com/...">
 <div id="loading">通信中...（数秒かかります）</div>
 <button id="btn-fetch" class="primary">URLから取得</button>
 <hr style="border-color:#333; margin: 5px 0;">
-<textarea id="text-input" placeholder="ここに直接文章を貼り付けてもOK"></textarea>
+<textarea id="text-input" placeholder="ここに直接文章を貼り付けてもOKだよ！"></textarea>
 <button id="btn-start-manual" class="primary">文章から開始</button>
 <button id="btn-close-modal">閉じる</button>
 </div>
@@ -111,7 +99,7 @@ const modal = document.getElementById('modal-input'), loadingMsg = document.getE
 
 // 初期化 (BudouXのロード)
 window.addEventListener('DOMContentLoaded', () => {
-parser = budoux.loadDefaultJapaneseParser(); // BudouX起動
+parser = window.budoux.loadDefaultJapaneseParser(); // BudouX起動
 
 const savedCpm = localStorage.getItem('rsvp_cpm');
 if (savedCpm) { state.cpm = parseInt(savedCpm, 10); document.getElementById('slider-speed').value = state.cpm; document.getElementById('speed-val').innerText = state.cpm; }
@@ -126,24 +114,30 @@ if (savedText) loadText(savedText, localStorage.getItem('rsvp_title') || '前回
 }
 });
 
-// 句読点クリーニング付きのBudouX分割処理
+// 完璧な句読点クリーニング付き BudouX 分割処理
 function processTextToPhrases(text) {
 if (!text) return [];
-const rawPhrases = parser.parse(text);
+
+// 改行などをきれいに整える
+const cleanText = text.replace(/\r\n/g, '\n').replace(/\n+/g, '\n');
+const rawPhrases = parser.parse(cleanText);
 const cleaned = [];
-const trailingMarks = /^[。、」』）！？!?，,\.\n]+/; // 文頭に来てほしくない記号
+const marks = /^[。、」』）！？!?，,\.\n\s]+/; // 文頭に来てほしくない記号たち
 
-for (let i = 0; i < rawPhrases.length; i++) {
-let current = rawPhrases[i];
-if (!current || current.trim() === '') continue;
-
-const match = current.match(trailingMarks);
-if (match && cleaned.length > 0) {
-cleaned[cleaned.length - 1] += match[0]; // 前の文節に結合
-current = current.replace(trailingMarks, '');
+rawPhrases.forEach(phrase => {
+let current = phrase;
+// 先頭に記号がある限り、前の文節にくっつけ続けるよ！
+while (current.match(marks)) {
+const m = current.match(marks)[0];
+if (cleaned.length > 0) {
+cleaned[cleaned.length - 1] += m;
 }
-if (current.trim() !== '') cleaned.push(current);
+current = current.slice(m.length);
 }
+if (current.trim().length > 0) {
+cleaned.push(current);
+}
+});
 return cleaned;
 }
 
@@ -197,15 +191,9 @@ state.currentIndex++; scheduleNext();
 }, duration);
 }
 
-// CORS回避用 プロキシ経由でのスクレイピング
-async function fetchNovelData(url) {
-loadingMsg.style.display = 'block';
-try {
-const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-const res = await fetch(proxy);
-const data = await res.json();
-const doc = new DOMParser().parseFromString(data.contents, "text/html");
-
+// HTMLを解析して読み込む関数
+function parseHtmlAndLoad(htmlText, url) {
+const doc = new DOMParser().parseFromString(htmlText, "text/html");
 let content = '', title = '', prev = '', next = '';
 
 if (url.includes('syosetu.com')) {
@@ -216,7 +204,7 @@ if(a.innerText.includes('前')) prev = new URL(a.getAttribute('href'), url).href
 if(a.innerText.includes('次')) next = new URL(a.getAttribute('href'), url).href;
 });
 } else if (url.includes('kakuyomu.jp')) {
-content = doc.querySelector('.widget-episodeBody')?.innerText || '';
+content = doc.querySelector('.widget-episodeBody')?.innerText || doc.querySelector('.js-vertical-section')?.innerText || '';
 title = doc.querySelector('.widget-episodeTitle')?.innerText || '';
 const pEl = doc.querySelector('.widget-episode-nav-item--prev a');
 const nEl = doc.querySelector('.widget-episode-nav-item--next a');
@@ -224,10 +212,37 @@ if(pEl) prev = new URL(pEl.getAttribute('href'), url).href;
 if(nEl) next = new URL(nEl.getAttribute('href'), url).href;
 }
 
-if(content) loadText(content, title, prev, next);
-else alert('本文が見つかりませんでした。直接貼り付けてください。');
-} catch(e) { alert('通信エラーです。'); }
-finally { loadingMsg.style.display = 'none'; }
+if(content) {
+loadText(content, title, prev, next);
+} else {
+alert('本文が見つからなかったよ。直接貼り付けてね！');
+}
+}
+
+// CORS回避用 プロキシ通信（2段階フォールバック）
+async function fetchNovelData(url) {
+loadingMsg.style.display = 'block';
+loadingMsg.innerText = '通信中...（数秒かかります）';
+try {
+// 1つ目のプロキシ
+const res1 = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`);
+if (!res1.ok) throw new Error('Proxy 1 failed');
+const htmlText = await res1.text();
+parseHtmlAndLoad(htmlText, url);
+} catch(e1) {
+console.log('Proxy 1 failed, trying Proxy 2...');
+try {
+// 2つ目のプロキシ（予備）
+const res2 = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+if (!res2.ok) throw new Error('Proxy 2 failed');
+const data = await res2.json();
+parseHtmlAndLoad(data.contents, url);
+} catch(e2) {
+alert('通信エラーだよ！プロキシサーバーがブロックされているかもしれないから、直接文章を貼り付けてね！');
+}
+} finally {
+loadingMsg.style.display = 'none';
+}
 }
 
 // 各種イベントリスナー
