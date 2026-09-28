@@ -30,13 +30,12 @@ controls { background-color: var(--card-bg); border-top: 1px solid var(--border-
 .slider-row { display: flex; gap: 12px; font-size: 12px; color: #aaa; }
 .slider-container { display: flex; align-items: center; gap: 8px; flex: 1; }
 input[type="range"] { flex: 1; accent-color: var(--accent-color); }
-/* モーダル */
 .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; padding: 20px; }
 .modal.active { display: flex; }
 .modal-content { background-color: var(--card-bg); padding: 20px; border-radius: 12px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 12px; }
 input[type="text"], textarea { width: 100%; background: #121212; color: #fff; border: 1px solid #555; padding: 10px; border-radius: 8px; font-size: 14px; }
-textarea { height: 180px; resize: none; }
-#loading { display: none; font-size: 12px; color: var(--accent-color); text-align: center; }
+textarea { height: 150px; resize: none; }
+#loading { display: none; font-size: 12px; color: var(--accent-color); text-align: center; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -77,60 +76,75 @@ textarea { height: 180px; resize: none; }
 <div class="modal" id="modal-input">
 <div class="modal-content">
 <h3>小説の読み込み</h3>
-<p style="font-size:12px; color:#aaa;">なろう・カクヨムのURL、または本文を直接貼り付けてね。</p>
 <input type="text" id="url-input" placeholder="https://ncode.syosetu.com/...">
-<div id="loading">通信中...（数秒かかります）</div>
 <button id="btn-fetch" class="primary">URLから取得</button>
+<div id="loading">通信中...（数秒お待ちください）</div>
 <hr style="border-color:#333; margin: 5px 0;">
-<textarea id="text-input" placeholder="ここに直接文章を貼り付けてもOKだよ！"></textarea>
+<textarea id="text-input" placeholder="ここに直接文章を貼り付けて「文章から開始」を押してね！"></textarea>
 <button id="btn-start-manual" class="primary">文章から開始</button>
 <button id="btn-close-modal">閉じる</button>
 </div>
 </div>
 
 <script>
-let parser = null;
 let state = { phrases: [], currentIndex: 0, isPlaying: false, timer: null, cpm: 500, fontSize: 32, prevUrl: '', nextUrl: '' };
 
-const elWord = document.getElementById('rsvp-word'), elTitle = document.getElementById('doc-title');
-const elBtnToggle = document.getElementById('btn-toggle'), elProgressBar = document.getElementById('progress-bar');
-const elBtnPrev = document.getElementById('btn-prev'), elBtnNext = document.getElementById('btn-next');
-const modal = document.getElementById('modal-input'), loadingMsg = document.getElementById('loading');
+const elWord = document.getElementById('rsvp-word');
+const elTitle = document.getElementById('doc-title');
+const elBtnToggle = document.getElementById('btn-toggle');
+const elProgressBar = document.getElementById('progress-bar');
+const elBtnPrev = document.getElementById('btn-prev');
+const elBtnNext = document.getElementById('btn-next');
+const modal = document.getElementById('modal-input');
+const loadingMsg = document.getElementById('loading');
 
-// 初期化 (BudouXのロード)
-window.addEventListener('DOMContentLoaded', () => {
-parser = window.budoux.loadDefaultJapaneseParser(); // BudouX起動
-
-const savedCpm = localStorage.getItem('rsvp_cpm');
-if (savedCpm) { state.cpm = parseInt(savedCpm, 10); document.getElementById('slider-speed').value = state.cpm; document.getElementById('speed-val').innerText = state.cpm; }
-
-// URLパラメータの確認（ブックマークレット連携用）
-const params = new URLSearchParams(window.location.search);
-const passedUrl = params.get('url');
-if (passedUrl) { fetchNovelData(passedUrl); }
-else {
-const savedText = localStorage.getItem('rsvp_text');
-if (savedText) loadText(savedText, localStorage.getItem('rsvp_title') || '前回の続き');
+// ★ エラーに強いBudouX分割 ＋ 予備システム ★
+function safeParse(text) {
+try {
+if (typeof budoux !== 'undefined') {
+const parser = budoux.loadDefaultJapaneseParser();
+return parser.parse(text);
 }
-});
+} catch(e) {
+console.warn("BudouXの読み込みに失敗したため、予備システムで分割します", e);
+}
 
-// 完璧な句読点クリーニング付き BudouX 分割処理
+// BudouXが使えない場合の予備システム（句読点で分割）
+let chunks = [];
+let current = "";
+for (let char of text) {
+current += char;
+if (/[。、！？\n]/.test(char)) {
+chunks.push(current);
+current = "";
+}
+}
+if (current) chunks.push(current);
+return chunks;
+}
+
+// ★ 完璧な句読点クリーニング処理 ★
 function processTextToPhrases(text) {
 if (!text) return [];
 
-// 改行などをきれいに整える
 const cleanText = text.replace(/\r\n/g, '\n').replace(/\n+/g, '\n');
-const rawPhrases = parser.parse(cleanText);
+const rawPhrases = safeParse(cleanText);
 const cleaned = [];
-const marks = /^[。、」』）！？!?，,\.\n\s]+/; // 文頭に来てほしくない記号たち
+const marks = /^[。、」』）！？!?，,\.\n\s]+/; // 文頭に来てほしくない記号
 
 rawPhrases.forEach(phrase => {
 let current = phrase;
-// 先頭に記号がある限り、前の文節にくっつけ続けるよ！
-while (current.match(marks)) {
-const m = current.match(marks)[0];
+// 先頭の記号を前の文節にくっつける
+while (true) {
+const match = current.match(marks);
+if (!match) break;
+const m = match[0];
+if (m.length === 0) break;
+
 if (cleaned.length > 0) {
 cleaned[cleaned.length - 1] += m;
+} else {
+cleaned.push(m);
 }
 current = current.slice(m.length);
 }
@@ -142,14 +156,22 @@ return cleaned;
 }
 
 function loadText(text, title, prev='', next='') {
+try {
 stop();
 state.phrases = processTextToPhrases(text);
+if(state.phrases.length === 0) {
+alert('文章が空っぽだよ！');
+return;
+}
 state.currentIndex = 0; state.prevUrl = prev; state.nextUrl = next;
 elTitle.innerText = title;
 elBtnPrev.disabled = !prev; elBtnNext.disabled = !next;
 localStorage.setItem('rsvp_text', text); localStorage.setItem('rsvp_title', title);
 modal.classList.remove('active');
 updateDisplay();
+} catch(e) {
+alert('読み込み中にエラーが起きたよ: ' + e.message);
+}
 }
 
 function updateDisplay() {
@@ -157,7 +179,7 @@ if (state.phrases.length === 0) return;
 if (state.currentIndex >= state.phrases.length) { state.currentIndex = state.phrases.length - 1; stop(); }
 
 const phrase = state.phrases[state.currentIndex];
-const mid = Math.floor(phrase.length / 2); // ORP（中心点）計算
+const mid = Math.floor(phrase.length / 2); // ORP計算
 let html = '';
 for (let i = 0; i < phrase.length; i++) {
 html += (i === mid) ? `<span class="orp">${phrase[i]}</span>` : phrase[i];
@@ -182,7 +204,7 @@ if (!state.isPlaying) return;
 updateDisplay();
 
 let duration = (state.phrases[state.currentIndex].length * (60 / state.cpm) * 1000);
-if (/[。！？\n]/.test(state.phrases[state.currentIndex])) duration *= 1.5; // 句点で少しタメる
+if (/[。！？\n]/.test(state.phrases[state.currentIndex])) duration *= 1.5;
 
 state.timer = setTimeout(() => {
 if (state.currentIndex < state.phrases.length - 1) {
@@ -191,8 +213,9 @@ state.currentIndex++; scheduleNext();
 }, duration);
 }
 
-// HTMLを解析して読み込む関数
+// ★ HTML解析とURL取得（エラーメッセージ付き） ★
 function parseHtmlAndLoad(htmlText, url) {
+try {
 const doc = new DOMParser().parseFromString(htmlText, "text/html");
 let content = '', title = '', prev = '', next = '';
 
@@ -215,37 +238,49 @@ if(nEl) next = new URL(nEl.getAttribute('href'), url).href;
 if(content) {
 loadText(content, title, prev, next);
 } else {
-alert('本文が見つからなかったよ。直接貼り付けてね！');
+alert('サイトから本文が見つけられなかったよ。直接コピーして貼り付けてみてね！');
+}
+} catch(e) {
+alert('サイトの解析に失敗したよ: ' + e.message);
 }
 }
 
-// CORS回避用 プロキシ通信（2段階フォールバック）
 async function fetchNovelData(url) {
 loadingMsg.style.display = 'block';
-loadingMsg.innerText = '通信中...（数秒かかります）';
 try {
-// 1つ目のプロキシ
-const res1 = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`);
-if (!res1.ok) throw new Error('Proxy 1 failed');
-const htmlText = await res1.text();
-parseHtmlAndLoad(htmlText, url);
-} catch(e1) {
-console.log('Proxy 1 failed, trying Proxy 2...');
-try {
-// 2つ目のプロキシ（予備）
-const res2 = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-if (!res2.ok) throw new Error('Proxy 2 failed');
-const data = await res2.json();
+const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+const res = await fetch(proxyUrl);
+if (!res.ok) throw new Error('プロキシサーバーへの接続に失敗しました');
+const data = await res.json();
+if(!data.contents) throw new Error('データを取得できませんでした');
 parseHtmlAndLoad(data.contents, url);
-} catch(e2) {
-alert('通信エラーだよ！プロキシサーバーがブロックされているかもしれないから、直接文章を貼り付けてね！');
-}
+} catch(e) {
+alert('通信エラーだよ！URLが間違っているか、セキュリティで弾かれたかもしれない: ' + e.message);
 } finally {
 loadingMsg.style.display = 'none';
 }
 }
 
-// 各種イベントリスナー
+// 初期化とイベント設定
+window.addEventListener('DOMContentLoaded', () => {
+try {
+const savedCpm = localStorage.getItem('rsvp_cpm');
+if (savedCpm) { state.cpm = parseInt(savedCpm, 10); document.getElementById('slider-speed').value = state.cpm; document.getElementById('speed-val').innerText = state.cpm; }
+
+const params = new URLSearchParams(window.location.search);
+const passedUrl = params.get('url');
+if (passedUrl) {
+fetchNovelData(passedUrl);
+} else {
+const savedText = localStorage.getItem('rsvp_text');
+if (savedText) loadText(savedText, localStorage.getItem('rsvp_title') || '前回の続き');
+else modal.classList.add('active'); // 最初は何もないので開く
+}
+} catch (e) {
+console.error("初期化エラー", e);
+}
+});
+
 document.getElementById('main-area').addEventListener('click', () => state.isPlaying ? stop() : play());
 document.getElementById('btn-toggle').addEventListener('click', (e) => { e.stopPropagation(); state.isPlaying ? stop() : play(); });
 document.getElementById('btn-rewind').addEventListener('click', () => { state.currentIndex = Math.max(0, state.currentIndex - 5); updateDisplay(); });
@@ -261,13 +296,21 @@ document.getElementById('slider-size').addEventListener('input', (e) => { elWord
 document.getElementById('btn-open-modal').addEventListener('click', () => { stop(); modal.classList.add('active'); });
 document.getElementById('btn-close-modal').addEventListener('click', () => modal.classList.remove('active'));
 
+// ★ 文章開始ボタン（エラーキャッチ付き） ★
 document.getElementById('btn-start-manual').addEventListener('click', () => {
+try {
 const txt = document.getElementById('text-input').value;
 if(txt) loadText(txt, '直接入力', '', '');
+else alert('テキストボックスが空っぽだよ！');
+} catch(e) {
+alert('エラーが発生したよ: ' + e.message);
+}
 });
+
 document.getElementById('btn-fetch').addEventListener('click', () => {
 const u = document.getElementById('url-input').value;
 if(u) fetchNovelData(u);
+else alert('URLを入力してね！');
 });
 
 elBtnPrev.addEventListener('click', () => { if(state.prevUrl) window.location.href = `?url=${encodeURIComponent(state.prevUrl)}`; });
